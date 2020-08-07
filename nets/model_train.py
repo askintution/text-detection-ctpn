@@ -62,16 +62,26 @@ def lstm_fc(net, input_channel, output_channel, scope_name):
     return output
 
 
+"""
+1. vggnet获取图像的基础表征
+2. 对上层的feature map进行卷积，生成512通道的的feature map
+3. 特征输入到Bi-LSTM中，输出W*256的结果（128双向整合结果）
+4. 将结果输入到512维全连接层(FC)中。通过分类或回归得到的输出
+"""
 def model(image):
+    # 图片归一化
     image = mean_image_subtraction(image)
     with slim.arg_scope(vgg.vgg_arg_scope()):
         conv5_3 = vgg.vgg_16(image)
 
+    # 该层对上层的feature map进行卷积，生成512通道的的feature map
     rpn_conv = slim.conv2d(conv5_3, 512, 3)
 
     lstm_output = Bilstm(rpn_conv, 512, 128, 512, scope_name='BiLSTM')
 
+    # 每一anchor上生成4个位置偏移量
     bbox_pred = lstm_fc(lstm_output, 512, 10 * 4, scope_name="bbox_pred")
+    # 对于文本提议来说，类别为2，一类为为文字部分，另一类为背景
     cls_pred = lstm_fc(lstm_output, 512, 10 * 2, scope_name="cls_pred")
 
     # transpose: (1, H, W, A x d) -> (1, H, WxA, d)
@@ -114,6 +124,12 @@ def smooth_l1_dist(deltas, sigma2=9.0, name='smooth_l1_dist'):
                (deltas_abs - 0.5 / sigma2) * tf.abs(smoothL1_sign - 1)
 
 
+"""
+两个损失函数
+
+1. rpn_cross_entropy: 每一个框的cross entropy loss
+2. rpn_loss_box
+"""
 def loss(bbox_pred, cls_pred, bbox, im_info):
     rpn_data = anchor_target_layer(cls_pred, bbox, im_info, "anchor_target_layer")
 
